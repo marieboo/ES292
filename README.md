@@ -13,3 +13,6 @@ cd .., rm -rf myrepo/ (clean up, goes up a directory and deletes from local comp
 Notes
 git push sometimes wants PAT (get it here: https://github.com/settings/tokens) 
 open README.md (will opne in VSCode)
+
+do regularly: git commit -m "filename"
+do at end: git push
