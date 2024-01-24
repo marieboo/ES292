@@ -72,3 +72,158 @@ Book parts
 - 4 to 9 multiple linear regression, causal inference when analyzing separate causal models for variable inclusion, plotting instead of interpreting, model complexity/overfitting, information theory and formal model comparison
 - 9 to 12 linear models, markov chain monte carlo to fit models, maximum entropy, models, models, models
 - 13 to 16 multi-level models, special models for error, missing data, spatial correlation, theoretical stats models
+
+# Chapter 2: Small World and Large Worlds
+Example: Small world is self-contained logical model, large world is context in which the model is deployed
+
+## 2.1. The garden of forking data
+
+Example Marbles
+
+Counting possibilities: bag with 4 marbles black and white, so 5 possible combinations. If we draw blue, white, blue in a row with replacing, this event based on standard probability tree has different chance of happening for all 5 possible combinations. Three of the the combinations (all blue, all white) can not happen, the other have 3, 8 and 9 possible draws. 
+
+Combining other info: Event draw 1 blue marbles, 0, 1,2,3,4 possible draws. We can multiply these two possible events
+
+Probability:  instead of possible draws 3/64 and 1/4 and just multiply them. 
+Plausibility of a specific combination of seeing event is proportional to ways to produce event X prior plausibility (!! order matters)
+
+
+Definitions
+
+*Parameter* p
+*Likelihood* relative number of ways value p can produce data
+*prior probability* prior plausibility of a specific p
+*posterior probability* updated new probability 
+
+posterior probability= prior probability*likelihood
+
+## 2.2. Building a model 
+
+Three steps (1) Create model based on narrative for data, descriptive or causal (2) Update by feeding data, called *Bayesian Updating* (3) Evaluate 
+
+
+Bayesian updating may create plausibility curves (like pdf) based on observations, with each additional observation the curve changes 
+
+! Bayesian estimates are valid at any sample size, but prior (initial plausability) has to be strong
+
+## 2.3. Model Components
+
+*Variables* - observed and unobserved, 
+
+unobserved variables are called *Parameters*, each parameter has a prior plausibility *prior*, if prior is chosen based upon personal belief of analyst it is called *subjective bayesian*, prior needs to be chosen, evaluated and revised as part of model
+
+observed variables have a distribution function, which is called *Likelihood* (term we will try to avoid), *binominal distribution* only two options (represents maximum entropy to count binary events)
+
+nomenclature
+X ~ Binominal (n,p) and p ~ Uniform (0,1)
+X is observed variable, n is number of trials, p is unobserved parameter with a flat prior (0,1), can be other than uniform
+
+## 2.4. Making the model go
+
+*posterior distribution* update the model based on all variables etc 
+Pr(p|(X,Y)) Probability of parameters, conditional on obsevred data
+
+*Bayes Theorem* joint probability of data X,Y and particular value of p is Pr(X,Y,p)=Pr(X,Y|p)Pr(p)=Pr(p|X,Y)Pr(X,Y) also the other way around, with Pr(p) or Pr(X,Y) being prior probability, from that equation we will get 
+
+Posterior=(Probability of Data x Prior)/(Average probability of Data)
+
+Average probability of data (Pr(X,Y)) called *evidence* or *average likelihood* is literally average of probability over the prior
+
+Pr(X,Y)+E(Pr(X,Y|p))=Integral Pr(X,Y|p)Pr(p)dp
+
+E - *Expectation*, Averages are commonly called *Marginal*
+Posterior is proportional to the product of prior and probability of the data
+
+MOTOR of model is conditioning the prior on the data under rules of probability theory
+
+BUT! math rules sometimes not enough -> numerical approximation techniques to the rescue (Grid approximation, quadratic approximation, Markov chain monte carlo MCMC)
+
+*GRID APPROXIMATION* finite grid of parameter values p' calculate posterior probability for each grid call -> posterior distribution
+R Code (1) Define grid (2) Computer prior value at each grid (3) compute likelihood at each grid (4) compute posterior at each grid (5)standardize posterior by dividing through sum of values
+
+
+Example code, 20 grid cells, 6 events out of 9 binominal trials and the prior (plausibility of an event happening is 1 as one possible outcome when either or, seem slike prior is always 1 in binominal problems)
+```{r}
+# define grid
+p_grid <- seq( from=0 , to=1 , length.out=20 )
+# define prior
+prior <- rep( 1 , 20 )
+# compute likelihood at each value in grid
+likelihood <- dbinom( 6 , size=9 , prob=p_grid )
+# compute product of likelihood and prior
+unstd.posterior <- likelihood * prior
+# standardize the posterior, so it sums to 1
+posterior <- unstd.posterior / sum(unstd.posterior)
+plot(posterior)
+```
+
+*QUADRATIC APPROXIMATION* 
+Region near peak of posterior will be nearly Gaussian/quadratic - described by mean and variance, low computational needs, often very exact
+
+Two step R procedure (1) find posterior mode, usually by optimization algorithm trying to find peak (2) estimating posterior curvature near top to find peak, usually numerical 
+
+Toss example with quap function from rethinking package
+```{r}
+library(rethinking)
+globe.qa <- quap(
+alist(
+X ~ dbinom( X+Y ,p) , # binomial likelihood
+p ~ dunif(0,1) # uniform prior
+) ,
+data=list(X=6,Y=3) )
+# display summary of quadratic approximation
+precis( globe.qa )
+```
+We provide formula, and list of data, quap does the rest behind the scenes. Results are posterior mean value p, curvature is standard deviation, assuming the posterior is gaussian. 
+
+Code below is same thing but analytically and then compared to the posterior we already now (comparing the two curves)
+```{r}
+# analytical calculation
+X <- 6
+Y <- 3
+curve( dbeta( x , X+1 , Y+1 ) , from=0 , to=1 )
+# quadratic approximation
+curve( dnorm( x , 0.67 , 0.16 ) , lty=2 , add=TRUE)
+
+```
+
+Quadratic approximation is often equivalent with maximum likelihood estimate (MLE) and its standard error. 
+
+*MCMC* 
+For (multi-level) models with many parameters grid and quadratic approx may have too much computational needs. -> MCMC as a counterintuitive model fitting technique. 
+
+MCMC draws samples from posterior distribution directly, result collection of parameter values which frequencies correspond to posterior plausibilities. -> posterior from histogram of samples 
+
+
+Random example (without explanation) *Metropolis Algorithm*
+```{r}
+n_samples <- 1000
+p <- rep( NA , n_samples )
+p[1] <- 0.5
+W <- 6
+L <- 3
+for ( i in 2:n_samples ) {
+p_new <- rnorm( 1 , p[i-1] , 0.1 )
+if ( p_new < 0 ) p_new <- abs( p_new )
+if ( p_new > 1 ) p_new <- 2 - p_new
+q0 <- dbinom( W , W+L , p[i-1] )
+q1 <- dbinom( W , W+L , p_new )
+p[i] <- ifelse( runif(1) < q1/q0 , p_new , p[i-1] )
+}
+#compare to analytical posterior
+dens( p , xlim=c(0,1) )
+curve( dbeta( x , W+1 , L+1 ) , lty=2 , add=TRUE )
+```
+
+
+## 2.5. Summary
+The target
+of inference in Bayesian inference is a posterior probability distribution. Posterior probabilities state the relative numbers of ways each conjectured cause of the data could have produced the data. These relative numbers indicate plausibilities of the different conjectures.
+These plausibilities are updated in light of observations, a process known as Bayesian updating.
+More mechanically, a Bayesian model is a composite of variables and distributional definitions for these variables. The probability of the data, often called the likelihood, provides
+the plausibility of an observation (data), given a fixed value for the parameters. The prior
+provides the plausibility of each possible value of the parameters, before accounting for the
+data. The rules of probability tell us that the logical way to compute the plausibilities, after
+accounting for the data, is to use Bayes’ theorem. This results in the posterior distribution.
+In practice, Bayesian models are fit to data using numerical techniques, like grid approximation, quadratic approximation, and Markov chain Monte Carlo. 
+
