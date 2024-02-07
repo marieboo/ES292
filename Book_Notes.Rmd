@@ -44,7 +44,7 @@ Instead of tests, we will have models as our tools
 
 ### 1.3.1. Bayesian data analysis
 
-Pure logic, probabilities. Special case "Frequentist approach" - all probabibilities defined by events in large samples, parameters and models cannot have probability distribution, only a "sampling distribution exist" (?meaning? maybe that variability is not a probability and only uncertainty?)
+Pure logic, probabilities. Special case "Frequentist approach" - all probabibilities defined by events in large samples, parameters and models do not have probability distribution, only a "sampling distribution exist" 
 Anyways, Bayesian statistics is logical and intuitive and that good.
 
 ### 1.3.2. Model comparison
@@ -84,7 +84,7 @@ Counting possibilities: bag with 4 marbles black and white, so 5 possible combin
 
 Combining other info: Event draw 1 blue marbles, 0, 1,2,3,4 possible draws. We can multiply these two possible events
 
-Probability:  instead of possible draws 3/64 and 1/4 and just multiply them. 
+Probability:  instead of possible draws just multiply probability of marble combo 1/4 with possible options by it (e.g. 3,8,9). 
 Plausibility of a specific combination of seeing event is proportional to ways to produce event X prior plausibility (!! order matters)
 
 
@@ -227,3 +227,185 @@ data. The rules of probability tell us that the logical way to compute the plaus
 accounting for the data, is to use Bayes’ theorem. This results in the posterior distribution.
 In practice, Bayesian models are fit to data using numerical techniques, like grid approximation, quadratic approximation, and Markov chain Monte Carlo. 
 
+
+
+#Class Problems
+```{r}
+library(tidyverse)
+world<-tibble(
+  toss=c('L',"W","W","W","L","W","W","L","W","W","W","L")
+)
+table(world$toss)
+
+
+#Gridapproximation
+# define grid
+p_grid <- seq( from=0 , to=1 , length.out=20 )
+# define prior
+prior <- rep( 1 , 20 )
+# compute likelihood at each value in grid
+likelihood <- dbinom( 8 , size=12 , prob=p_grid )
+# compute product of likelihood and prior
+unstd.posterior <- likelihood * prior
+# standardize the posterior, so it sums to 1
+posterior <- unstd.posterior / sum(unstd.posterior)
+plot(posterior)
+
+# analytical calculation
+W <- 8
+L <- 4
+curve( dbeta( x , W+1 , L+1 ) , from=0 , to=1 )
+```
+
+# Chapter 3: Sampling the Imaginary
+
+Vampire Examples
+```{r}
+Pr_Positive_Vampire <- 0.95 # Pr(positive test|Vampire) accuracy of correct detecting
+ Pr_Positive_Mortal <- 0.01 # Pr(positive test|Mortal) false positives
+ Pr_Vampire <- 0.001 # Pr(Vampire) percentage of population being vampires
+ 
+ #Probability of a person being a vampire if they test positive
+ Pr_Positive <- Pr_Positive_Vampire * Pr_Vampire +
+ Pr_Positive_Mortal * ( 1- Pr_Vampire )
+ ( Pr_Vampire_Positive <- Pr_Positive_Vampire*Pr_Vampire / Pr_Positive )
+```
+If condition of interest is very rare, false positives may be more frequent than true positives. 
+
+Alternative thinking: 
+ (1) In a population of 100,000 people, 100 of them are vampires.
+ (2) Of the 100 who are vampires, 95 of them will test positive for vampirism.
+ (3) Of the 99,900 mortals, 999 of them will test positive for vampirism.
+
+Calculation Pr(vamp|positive)=95/(95+99)=95/1094=0.087
+
+- in this chapter: use samples to summarize and simulate model output
+
+## 3.1. Sampling for a grid-approximate posterior 
+
+Generate posterior (e.g. globe tossing with 0.7/0.3 probabilities water/land with posterior meaning probability of p conditional on data), draw samples from posterior, plot samples, use rethinking package for the density estimate 
+
+```{r}
+ p_grid<-seq(from=0 , to=1,length.out=1000 )
+ prob_p<-rep(1 ,1000 )
+ prob_data<- dbinom( 6,size=9,prob=p_grid)
+ posterior<- prob_data*prob_p
+ posterior<- posterior/sum(posterior)
+
+  samples<- sample(p_grid,prob=posterior , size=1e4,replace=TRUE)
+  
+  plot(samples)
+  
+ library(rethinking)
+ dens(samples )
+```
+
+## 3.2. Sampling to summarize
+
+After model produces posterior distribution, I need to summarize and interpret
+
+*INTERVALS OF DEFINED BOUNDARIES*
+
+Posterior probability of something being lower/higher/exactly a specific parameter value
+Solution:Add up all probabilities of that condition
+
+-> e.g. posterior probability of water being less than 0.5 using grid approximate posterior
+
+```{r}
+sum(posterior[p_grid<0.5])
+```
+-> alternative solution using samples directly (all samples less than 0.5 posterior)
+```{r}
+sum(samples<0.5)/1e4
+```
+
+Other things to play around with
+```{r}
+sum (samples=0.5)/1e4
+sum (samples>0.5&samples<0.75)/1e4
+```
+
+*INTERVALS OF DEFINED MASS*
+
+AKA *confidence intervals*, or if interval of posterior probability may call *credible interval*, but we call it *compatibility interval* because we check if a chosen range of parameter values is compatible with the model and data
+
+
+```{r}
+#new example, 3 waters in 3 tosses observed, with uniform (flat)  prior
+ p_grid <- seq( from=0 , to=1 , length.out=1000 )
+ prior <- rep(1,1000)
+ likelihood <- dbinom( 3 , size=3 , prob=p_grid )
+ posterior <- likelihood * prior
+ posterior <- posterior / sum(posterior)
+ samples <- sample( p_grid , size=1e4 , replace=TRUE , prob=posterior )
+ 
+quantile(samples, 0.8) #boundaries of lower 80%
+quantile(samples, c(0.1,0.9)) #middle 80% as Percentile Interval
+HPDI(samples,prob=0.8) #narrowest interval containing 80%
+```
+Intervals with equal probability to each tail are called *percentile interval (PI)*, but better is *highest posterior density interval (HPDI)*, which is narrowest interval containing specific probability mass
+
+HDPI
+-> very similar to PI
+-> advantage: if posterior is highly skewed
+-> disadvantage: computational intensive, suffers from simulation variance (sensitive to number of samples), not established with scientist, hard to understand
+
+Anyways: If choice of intervals makes a difference, we should not use intervals in the first place
+
+*POINT ESTIMATES*
+When we want to report a single value 
+
+-> value with higher posterior, *maximum a posterior (MAP)* in this case values of p 
+```{r}
+p_grid[which.max(posterior)] #probability value with maximum posterior
+chainmode(samples, adj=0.01) # with samples from posterior
+mean(samples)
+median(samples)
+```
+
+*Loss function* tells us cost with using a point estimate, different loss function imply different point estimates
+```{r}
+sum(posterior*abs(0.5-p_grid))
+loss <- sapply(p_grid, function(d) sum(posterior*abs(d-p_grid))) #list of loss value for each possible decision 
+p_grid[which.min(loss)] #this is actually the posterior median
+```
+
+## 3.3. Sampling to simulate prediction
+
+Samples ease simulation of models observations. *Model design, model checking, software validation, research design, forecasting*
+
+*DUMMY DATA*
+Globe tossing example Pr(W|N,p)=N!/(W!(N-W!)!)*p^W*(1-p)^(N-W)
+
+```{r}
+dbinom(0:2, size=2, prob=0.7)
+```
+With probability of water 0.7, there is 9% chance of w=0, 42% of w=1 and 49% chance of w=2, when tossing 2 times
+```{r}
+dummy_w<-rbinom( 1e5, size=2 , prob=0.7 ) #generating 1e5 dummy observations (0,1, or 2 waters)
+table(dummy_w)/1e5
+dummy_l<-rbinom(1e5,size=9, prob=0.3)
+simplehist(dummy_l, xlab="dummy land count")
+```
+
+*MODEL CHECKING*
+means to ensure model fitting worked correctly and evaluating adequacy of model for purposes
+
+-> software works? check correspondence between predictions and data used, no perfect way to check
+-> model adequacy? observation uncertainty and uncertainty of prior, propagating parameter uncertainty!
+averaging over density of posterior for p, *posterior predictive distribution*
+
+Example 
+```{r}
+ w <- rbinom( 1e4 , size=9 , prob=0.6 )
+simplehist(w)
+
+#now replace value of 0.6 with samples from posterior
+ w <- rbinom( 1e4 , size=9 , prob=samples)
+ simplehist(w)
+```
+
+## 3.4. Summary
+
+Samples of posterior turn integral calculus in data summary problems, produce intervals, point estimates, posterior predictive checks and other simulations 
+Posterior predictive checks combine uncertainty about parameters with uncertainty about outcomes, as described by the assumed likelihood function
